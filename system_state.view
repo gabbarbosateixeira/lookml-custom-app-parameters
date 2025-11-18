@@ -1,0 +1,23 @@
+view: system_state {
+  sql_table_name: `gabriel-teixeira-argolis.calculator.system_state` ;;
+
+  dimension: primary_system_type {
+    type: string
+    sql: ${TABLE}.`Primary System Type` ;;
+  }
+  dimension: state {
+    type: string
+    sql: ${TABLE}.State ;;
+  }
+  dimension: state_multiplier {
+    type: number
+    sql: ${TABLE}.`State Multiplier` ;;
+  }
+  dimension: system_type_multiplier {
+    type: number
+    sql: ${TABLE}.`System Type Multiplier` ;;
+  }
+  measure: count {
+    type: count
+  }
+}
