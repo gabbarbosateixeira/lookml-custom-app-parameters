@@ -1,0 +1,342 @@
+
+# FILE: heat_pump_calculator.view.lkml
+# FINAL CORRECTED VERSION (v8)
+
+view: heat_pump_calculator {
+  derived_table: {
+    sql: SELECT 1 AS dummy ;;
+  }
+
+  # --- 1. INPUT PARAMETERS (The "Filters") ---
+
+  parameter: p_total_square_footage {
+    label: "Total Square Footage (Excl. Basement)"
+    type: number
+    default_value: "1800"
+  }
+  parameter: p_year_built {
+    label: "Year Built"
+    type: string
+    allowed_value: { value: "2010+" }
+    allowed_value: { value: "1990 to 2009" }
+    allowed_value: { value: "1970 to 1889" }
+    allowed_value: { value: "Before 1970" }
+  }
+
+  parameter: p_number_of_stories {
+    label: "Number of Stories"
+    type: number
+    allowed_value: { value: "1" }
+    allowed_value: { value: "2" }
+    allowed_value: { value: "3" }
+    allowed_value: { value: "4" }
+    default_value: "1"
+  }
+
+  parameter: p_finished_basement {
+    label: "Finished Basement?"
+    type: yesno
+  }
+  parameter: p_home_insulated {
+    label: "Home Insulated & Weatherized?"
+    type: yesno
+  }
+  parameter: p_primary_heating_fuel {
+    label: "Primary Heating Fuel"
+    type: string
+    allowed_value: { value: "Propane" }
+    allowed_value: { value: "Natural Gas" }
+    allowed_value: { value: "Oil" }
+    allowed_value: { value: "Electric" }
+  }
+  parameter: p_primary_system_type {
+    label: "Primary System Type"
+    type: string
+    suggest_dimension: system_state.primary_system_type
+    default_value: "Furnace"
+  }
+  parameter: p_system_type {
+    label: "System Type"
+    type: string
+    allowed_value: { value: "Ducted" }
+    allowed_value: { value: "Mixed" }
+    allowed_value: { value: "Non-ducted" }
+    default_value: "Mixed"
+  }
+
+  parameter: p_ductwork_type {
+    label: "Ductwork type"
+    type: string
+    allowed_value: { value: "New ductwork" }
+    allowed_value: { value: "Existing ductwork" }
+  }
+  parameter: p_new_system_coverage {
+    label: "New System Coverage %"
+    type: number
+  }
+
+  parameter: p_state {
+    label: "State"
+    type: string
+    suggest_dimension: system_state.state
+  }
+
+  # --- 2. DYNAMIC IMAGE (Your provided version) ---
+
+  dimension: image {
+    type: string
+    sql: ' ' ;;
+    html:
+    {% if p_system_type._parameter_value == "'Ducted'" %}
+    <img src="https://www.daikin.com/-/media/Project/Daikin/daikin_com/products/ac/modals/ductless_duct/images/pic_ducted_01-png.png?rev=-1&hash=383D5BC3BB5D261636B955B6692D2AFA" height="230" width="330">
+    {% elsif p_system_type._parameter_value == "'Mixed'" %}
+    <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/a/ac/No_image_available.svg/1024px-No_image_available.svg.png" height="170" width="200">
+    {% elsif p_system_type._parameter_value == "'Non-ducted'" %}
+    <img src="https://www.daikin.com/-/media/Project/Daikin/daikin_com/products/ac/modals/ductless_duct/images/pic_ductless_01-png.png?rev=-1&hash=0B7AD96EDC46D397200724943027CF05" height="230" width="330">
+    {% endif %} ;;
+  }
+
+
+  # --- 3. OUTPUT CALCULATIONS (The "Measures") ---
+
+  # --- Internal Logic (Dimensions) ---
+  dimension: _base_cost_calc {
+    hidden: yes
+    type: number
+    sql: (COALESCE({% parameter p_total_square_footage %}, 1800) * 10) + 5000 ;;
+  }
+
+  dimension: _state_multiplier {
+    hidden: yes
+    type: number
+    sql:
+      COALESCE(
+        (
+          SELECT
+            -- Use the exact column name with backticks
+            T.`State Multiplier`
+          FROM
+            -- Use the SQL_TABLE_NAME reference from your other view
+            ${system_state.SQL_TABLE_NAME} AS T
+          WHERE
+            -- Use the exact column names here too
+            T.State = {% parameter p_state %}
+            AND T.`Primary System Type` = {% parameter p_primary_system_type %}
+        ),
+        1.0
+      ) ;;
+  }
+
+  dimension: _primary_system_multiplier {
+    #hidden: yes
+    type: number
+    sql:
+      COALESCE(
+        (
+          SELECT
+            -- Use the exact column name with backticks
+            T.`System Type Multiplier`
+          FROM
+            ${system_state.SQL_TABLE_NAME} AS T
+          WHERE
+            -- Use the exact column names here too
+            T.State = {% parameter p_state %}
+            AND T.`Primary System Type` = {% parameter p_primary_system_type %}
+        ),
+        1.0
+      ) ;;
+  }
+
+  dimension: _system_type_multiplier {
+    hidden: yes
+    type: number
+    sql:
+      # CORRECTED: NO quotes in SQL, because param injects *with* quotes
+      CASE
+        WHEN {% parameter p_system_type %} = 'Ducted' THEN 1.2
+        WHEN {% parameter p_system_type %} = 'Mixed' THEN 1.1
+        ELSE 1.0
+      END ;;
+  }
+  dimension: _fuel_type_multiplier {
+    hidden: yes
+    type: number
+    sql:
+      # CORRECTED: NO quotes in SQL
+      CASE
+        WHEN {% parameter p_primary_heating_fuel %} = 'Propane' THEN 1.15
+        WHEN {% parameter p_primary_heating_fuel %} = 'Oil' THEN 1.1
+        ELSE 1.0
+      END ;;
+  }
+  dimension: _year_built_multiplier {
+    hidden: yes
+    type: number
+    sql:
+      # CORRECTED: NO quotes in SQL
+      CASE
+        WHEN {% parameter p_year_built %} = '2010+' THEN 0.9
+        WHEN {% parameter p_year_built %} = '1990 to 2009' THEN 1.0
+        WHEN {% parameter p_year_built %} = '1970 to 1889' THEN 1.1
+        ELSE 1.25
+      END ;;
+  }
+  dimension: _insulation_multiplier {
+    hidden: yes
+    type: number
+    sql:
+      # This is correct (yesno is boolean)
+      CASE
+        WHEN {% parameter p_home_insulated %} THEN 1.0
+        ELSE 1.2
+      END ;;
+  }
+
+  dimension: _stories_multiplier {
+    hidden: yes
+    type: number
+    sql:
+      # This is correct (param is type: number)
+      CASE
+        WHEN COALESCE({% parameter p_number_of_stories %}, 1) > 2 THEN 1.15
+        WHEN COALESCE({% parameter p_number_of_stories %}, 1) = 2 THEN 1.05
+        ELSE 1.0
+      END ;;
+  }
+
+  dimension: _basement_multiplier {
+    hidden: yes
+    type: number
+    sql:
+      # This is correct (yesno is boolean)
+      CASE
+        WHEN {% parameter p_finished_basement %} THEN 1.1
+        ELSE 1.0
+      END ;;
+  }
+
+  dimension: _ductwork_multiplier {
+    hidden: yes
+    type: number
+    sql:
+      # CORRECTED: NO quotes in SQL
+      CASE
+        WHEN {% parameter p_ductwork_type %} = 'New ductwork' THEN 1.2
+        ELSE 1.0
+      END ;;
+  }
+
+  dimension: _coverage_multiplier {
+    hidden: yes
+    type: number
+    sql:
+      # This is correct (param is type: number)
+      CASE
+        WHEN COALESCE({% parameter p_new_system_coverage %}, 25) > 75 THEN 1.8
+        WHEN COALESCE({% parameter p_new_system_coverage %}, 25) > 50 THEN 1.4
+        ELSE 1.0
+      END ;;
+  }
+
+  # --- Final Outputs (Measures) ---
+
+  measure: low_cost_estimate {
+    label: "Low Cost"
+    type: number
+    sql:
+      (
+        ${_base_cost_calc}
+        * ${_system_type_multiplier}
+        * ${_fuel_type_multiplier}
+        * ${_year_built_multiplier}
+        * ${_insulation_multiplier}
+        * ${_state_multiplier}
+        * ${_stories_multiplier}
+        * ${_basement_multiplier}
+        * ${_primary_system_multiplier}
+        * ${_ductwork_multiplier}
+        * ${_coverage_multiplier}
+      )
+      * 0.9
+      ;;
+    value_format_name: usd_0
+  }
+
+  measure: high_cost_estimate {
+    label: "High Cost"
+    type: number
+    sql:
+      (
+        ${_base_cost_calc}
+        * ${_system_type_multiplier}
+        * ${_fuel_type_multiplier}
+        * ${_year_built_multiplier}
+        * ${_insulation_multiplier}
+        * ${_state_multiplier}
+        * ${_stories_multiplier}
+        * ${_basement_multiplier}
+        * ${_primary_system_multiplier}
+        * ${_ductwork_multiplier}
+        * ${_coverage_multiplier}
+      )
+      * 1.25
+      ;;
+    value_format_name: usd_0
+  }
+
+  measure: low_tons_estimate {
+    label: "Low Tons"
+    type: number
+    sql: (COALESCE({% parameter p_total_square_footage %}, 1800) / 700.0) * 0.8 ;;
+    value_format: "0.0\" Tons\""
+  }
+
+  measure: high_tons_estimate {
+    label: "High Tons"
+    type: number
+    sql: (COALESCE({% parameter p_total_square_footage %}, 1800) / 700.0) * 1.1 ;;
+    value_format: "0.0\" Tons\""
+  }
+
+  dimension: request {
+    label: "Request"
+    sql: 'Request an Estimate';;
+    # The entire 'action' block goes inside the dimension's curly braces.
+    action: {
+      label: "Request Status Change..."
+
+      url: "https://looker-status-change-action-400466579007.us-east1.run.app"
+      # This form collects the new status and a comment from the user.
+
+      form_param: {
+        name: "comment"
+        type: textarea
+        label: "Email"
+        description: "Write your email here and we will get in touch.'"
+        required: yes
+      }
+
+      form_param: {
+        name: "high_cost_estimate"
+        type: "string"
+        default: "{{ high_cost_estimate._value }}"
+      }
+      form_param: {
+        name: "high_tons_estimate"
+        type: "string"
+        default: "{{ high_tons_estimate._value }}"
+      }
+      form_param: {
+        name: "low_cost_estimate"
+        type: "string"
+        default: "{{ low_cost_estimate._value }}"
+      }
+      form_param: {
+        name: "low_tons_estimate"
+        type: "string"
+        default: "{{ low_tons_estimate._value }}"
+      }
+    }
+  }
+
+}
