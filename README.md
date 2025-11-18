@@ -42,7 +42,8 @@ parameter: p_year_built {
   allowed_value: { value: "Before 1970" }
 }
 
-2. Calculation Logic (Multipliers)
+
+### 2. Calculation Logic (Multipliers)
 The heart of the calculator is a series of hidden dimensions that apply a multiplier to a base cost. Each dimension uses a CASE statement to determine the correct multiplier based on the user's selection in the corresponding parameter.
 
 Example of a multiplier dimension:
