@@ -1,0 +1,17 @@
+connection: "default_bigquery_connection"
+
+ include: "/views/*.view.lkml"                # include all views in the views/ folder in this project
+ include: "/**/*.view.lkml"                 # include all views in this project
+# include: "my_dashboard.dashboard.lookml"   # include a LookML dashboard called my_dashboard
+
+explore: heat_pump_calculator {
+
+# This join's purpose is to power the suggest_dimension for your parameters.
+  # The main calculator logic will NOT use this join for its calculations.
+  join: system_state {
+    type: left_outer
+    relationship: one_to_many # Use one_to_many since the join is not on a unique key
+    sql_on: 1=1 ;; # A simple join condition is fine for suggestions
+  }
+
+}
